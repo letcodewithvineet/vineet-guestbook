@@ -35,11 +35,9 @@
       };
     </script>
     <style>
-      /* Smooth scroll */
       html {
         scroll-behavior: smooth;
       }
-      /* Hide number input spinners (if any later) */
       input[type="number"]::-webkit-outer-spin-button,
       input[type="number"]::-webkit-inner-spin-button {
         -webkit-appearance: none;
@@ -66,7 +64,7 @@
           <span>Vineet's Guestbook</span>
         </a>
         <div class="flex items-center gap-2 sm:gap-3">
-          <!-- Home button requested by user -->
+          <!-- Home -->
           <a
             href="https://letcodewithvineet.github.io/vineet-mywebsite/"
             target="_blank"
@@ -96,8 +94,9 @@
           <a
             href="#sign"
             class="hidden sm:inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-3 py-2 text-sm font-medium hover:opacity-90 transition"
-            >Sign Guestbook</a
           >
+            Sign Guestbook
+          </a>
         </div>
       </nav>
     </header>
@@ -117,8 +116,7 @@
           </h1>
           <p class="mt-4 text-zinc-600 dark:text-zinc-300 text-base sm:text-lg">
             Drop a friendly note, share some feedback, or just say hi 👋. Your
-            message appears below instantly and is saved in your browser. You
-            can export/import later or hook up a real backend when you're ready.
+            message appears below instantly and is saved in your browser.
           </p>
           <div class="mt-6 flex flex-wrap gap-3">
             <a
@@ -229,10 +227,11 @@
               />
               Import JSON
             </label>
+            <!-- Hidden for public; becomes visible for admin (see script) -->
             <button
               type="button"
               id="clearBtn"
-              class="ml-auto inline-flex items-center gap-2 rounded-xl text-red-600 border border-red-200 dark:border-red-800 px-4 py-2.5 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+              class="ml-auto hidden inline-flex items-center gap-2 rounded-xl text-red-600 border border-red-200 dark:border-red-800 px-4 py-2.5 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 transition"
             >
               Clear all
             </button>
@@ -252,7 +251,28 @@
         </h2>
         <div class="text-sm text-zinc-500" id="count"></div>
       </div>
+
       <ul id="list" class="grid gap-3"></ul>
+
+      <!-- Pagination: stays hidden until total > 10 -->
+      <div
+        id="pager"
+        class="mt-4 hidden items-center justify-center gap-3 text-sm"
+      >
+        <button
+          id="prevBtn"
+          class="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          previous
+        </button>
+        <span id="pageInfo" class="text-zinc-500">1 / 1</span>
+        <button
+          id="nextBtn"
+          class="px-3 py-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          next
+        </button>
+      </div>
     </section>
 
     <!-- FOOTER -->
@@ -260,10 +280,7 @@
       <div
         class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8 text-sm text-zinc-500 flex flex-wrap items-center justify-between gap-3"
       >
-        <p>
-          Built with ❤️ by Vineet. This is a local-first demo; connect a backend
-          when ready.
-        </p>
+        <p>Built with ❤️ by Vineet.</p>
         <div class="flex items-center gap-3">
           <a class="underline hover:no-underline" href="#sign"
             >Sign guestbook</a
@@ -336,7 +353,7 @@
 
       const relTime = (ts) => {
         const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-        const d = (Date.now() - ts) / 1000; // seconds
+        const d = (Date.now() - ts) / 1000;
         const map = [
           [60, "seconds"],
           [60, "minutes"],
@@ -355,8 +372,7 @@
           }
           val /= step;
         }
-        val = -Math.round(val);
-        return rtf.format(val, unit);
+        return rtf.format(-Math.round(val), unit);
       };
 
       // ----- Theme -----
@@ -393,13 +409,21 @@
       const writeAll = (arr) =>
         localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
 
-      // ----- Form handling -----
+      // ----- Form / list refs -----
       const form = document.getElementById("entryForm");
       const nameEl = document.getElementById("name");
       const tagEl = document.getElementById("tag");
       const msgEl = document.getElementById("message");
       const listEl = document.getElementById("list");
       const countEl = document.getElementById("count");
+
+      // Pager refs/state
+      const pagerEl = document.getElementById("pager");
+      const prevBtn = document.getElementById("prevBtn");
+      const nextBtn = document.getElementById("nextBtn");
+      const pageInfo = document.getElementById("pageInfo");
+      const PAGE_SIZE = 10;
+      let currentPage = 1;
 
       // Keep last used name
       const LAST_NAME_KEY = "v_guestbook_last_name";
@@ -428,10 +452,11 @@
         writeAll(all);
         localStorage.setItem(LAST_NAME_KEY, name);
         msgEl.value = "";
+        currentPage = 1; // jump to newest
         render();
       });
 
-      // Export / Import / Clear
+      // Export / Import
       document.getElementById("exportBtn").addEventListener("click", () => {
         const data = readAll();
         const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -447,6 +472,7 @@
         a.remove();
         URL.revokeObjectURL(url);
       });
+
       document.getElementById("importFile").addEventListener("change", (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -455,7 +481,6 @@
           try {
             const arr = JSON.parse(reader.result);
             if (!Array.isArray(arr)) throw new Error("Invalid JSON");
-            // Basic sanitize
             const cleaned = arr.map((x) => ({
               id: String(x.id || uid()),
               name: String(x.name || "Anonymous").slice(0, 64),
@@ -465,6 +490,7 @@
               likes: Number(x.likes || 0),
             }));
             writeAll(cleaned);
+            currentPage = 1;
             render();
           } catch (err) {
             alert("Could not import JSON: " + err.message);
@@ -473,49 +499,97 @@
         reader.readAsText(file);
         e.target.value = "";
       });
-      document.getElementById("clearBtn").addEventListener("click", () => {
+
+      // Admin-only Clear All: reveal with ?admin=1 once (persists in localStorage)
+      const clearBtnEl = document.getElementById("clearBtn");
+      const urlAdmin = new URLSearchParams(location.search).get("admin");
+      if (urlAdmin === "1") localStorage.setItem("v_admin", "1");
+      const isAdmin = localStorage.getItem("v_admin") === "1";
+      if (isAdmin) clearBtnEl.classList.remove("hidden");
+
+      clearBtnEl.addEventListener("click", () => {
         if (!confirm("Clear ALL guestbook entries from this browser?")) return;
         writeAll([]);
+        currentPage = 1;
         render();
       });
 
-      // ----- Render -----
+      // ----- Render with pagination -----
       function render() {
         const items = readAll().sort((a, b) => b.ts - a.ts);
-        countEl.textContent = items.length
-          ? `${items.length} entr${items.length === 1 ? "y" : "ies"}`
+        const total = items.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        currentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+        countEl.textContent = total
+          ? `${total} entr${total === 1 ? "y" : "ies"}`
           : "No entries yet";
         listEl.innerHTML = "";
         const tpl = document.getElementById("entryTemplate");
-        for (const it of items) {
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pageItems = items.slice(start, start + PAGE_SIZE);
+
+        for (const it of pageItems) {
           const node = tpl.content.cloneNode(true);
           node.querySelector("[data-role=name]").textContent = it.name;
           node.querySelector("[data-role=message]").textContent = it.message;
           node.querySelector("[data-role=tag]").textContent = it.tag || "📝";
-          const timeEl = node.querySelector("[data-role=time]");
-          timeEl.textContent = `${relTime(it.ts)} · ${fmtDate(it.ts)}`;
-          const likeBtn = node.querySelector("[data-action=like]");
+          node.querySelector("[data-role=time]").textContent = `${relTime(
+            it.ts
+          )} · ${fmtDate(it.ts)}`;
           const likesEl = node.querySelector("[data-role=likes]");
           likesEl.textContent = it.likes || 0;
-          likeBtn.addEventListener("click", () => {
-            const all = readAll();
-            const idx = all.findIndex((x) => x.id === it.id);
-            if (idx >= 0) {
-              all[idx].likes = (all[idx].likes || 0) + 1;
+
+          node
+            .querySelector("[data-action=like]")
+            .addEventListener("click", () => {
+              const all = readAll();
+              const idx = all.findIndex((x) => x.id === it.id);
+              if (idx >= 0) {
+                all[idx].likes = (all[idx].likes || 0) + 1;
+                writeAll(all);
+                render();
+              }
+            });
+          node
+            .querySelector("[data-action=delete]")
+            .addEventListener("click", () => {
+              if (!confirm("Delete this entry?")) return;
+              const all = readAll().filter((x) => x.id !== it.id);
               writeAll(all);
+              const newPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+              if (currentPage > newPages) currentPage = newPages;
               render();
-            }
-          });
-          const delBtn = node.querySelector("[data-action=delete]");
-          delBtn.addEventListener("click", () => {
-            if (!confirm("Delete this entry?")) return;
-            const all = readAll().filter((x) => x.id !== it.id);
-            writeAll(all);
-            render();
-          });
+            });
+
           listEl.appendChild(node);
         }
+
+        // Show/hide pager only when needed
+        if (total > PAGE_SIZE) {
+          pagerEl.classList.remove("hidden");
+          pagerEl.classList.add("flex");
+          pageInfo.textContent = `${currentPage} / ${totalPages}`;
+          prevBtn.disabled = currentPage <= 1;
+          nextBtn.disabled = currentPage >= totalPages;
+        } else {
+          pagerEl.classList.add("hidden");
+          pagerEl.classList.remove("flex");
+        }
       }
+
+      // Pager controls
+      prevBtn.addEventListener("click", () => {
+        if (currentPage > 1) {
+          currentPage--;
+          render();
+        }
+      });
+      nextBtn.addEventListener("click", () => {
+        currentPage++;
+        render();
+      });
 
       // First render
       render();
